@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 import requests
+import pandas
 
 # Getting the names of the books
 web_page = requests.get("https://entertainment.time.com/2005/10/16/all-time-100-novels/slide/all/").text
@@ -26,26 +27,64 @@ for item in names:
 
     response = S.get(url="https://en.wikipedia.org/w/api.php", params=PARAMS).json()
 
-    wikipedia_link.append(response[-1])
+    link = response[-1][0]
+    if "_(film)" in link:
+        link = link.replace("_(film)", "")
+    if "(comics)" in link:
+        link = link.replace("(comics)", "")
+    wikipedia_link.append(link)
 
 # Getting relevant information of specific books from wikipedia
-relevant_data = []
+relevant_data_list = []
 for index in range(len(wikipedia_link)):
     temp = wikipedia_link[index]
-    wiki_data = requests.get(str(temp)).text
+    temp = temp
+    wiki_data = requests.get(temp).text
     soup = BeautifulSoup(wiki_data, "html.parser")
-    t_body_element = soup.find(name="tbody")
-    panel = t_body_element.find_all(name="td", class_="infobox-data")
+    try:
+        t_body_element = soup.find(name="tbody")
+        panel = t_body_element.find_all(name="td", class_="infobox-data")
+
+
+        def relevant_data(t_body, name):
+            try:
+                label = t_body.find('th', string=name)
+                if label:
+                    # If the label is found, navigate to the adjacent 'td' tag to extract the genre text
+                    data = label.find_next('td').get_text(strip=True)
+                    return data
+            except:
+                pass
+            return "Data not Available"
+
+
+        # Getting Author name
+        author = relevant_data(t_body_element, "Author")
+
+        # Getting Genre of the book
+        genre = relevant_data(t_body_element, 'Genre')
+
+        # Getting the publisher name
+        publisher = relevant_data(t_body_element, 'Publisher')
+
+        # Getting the publishing date of the book
+        publishing_date = relevant_data(t_body_element, "Publication date")
+        if publishing_date[-3:] == "[1]":
+            publishing_date = publishing_date.replace("[1]", "")
+
+        # Getting the number of pages of the book
+        pages = relevant_data(t_body_element, "Pages")
+    except:
+        genre = pages = publishing_date = author = publisher = "Data not Available"
 
     dict = {
-        'author': t_body_element.find(class_="infobox-data").getText(),
-        'language': panel[2].getText(),
-        'genre': panel[3].getText(),
-        'publisher': panel[4].getText(),
-        'publication_date': panel[5].getText()[:-3],
-        'print_available': panel[6].getText(),
-        'pages': panel[7].getText(),
+        'Author': author,
+        'Genre': genre,
+        'Publisher': publisher,
+        'Publication_date': publishing_date,
     }
 
-    relevant_data.append(dict)
-print(relevant_data)
+    relevant_data_list.append(dict)
+
+df = pandas.DataFrame(relevant_data_list)
+df.to_excel('book_details.xlsx', index=False)
